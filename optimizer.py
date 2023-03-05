@@ -59,7 +59,28 @@ class AdamW(Optimizer):
                 #    (incorporating the learning rate again).
 
                 ### TODO
-                raise NotImplementedError
+                if len(state) == 0: #not initialized
+                    state['t'] = 0
+                    state['m'] = 0
+                    state['v'] = 0
+                state['t'] += 1
+                #theta is p.data
+                # g_t = p.grad.data #definited as grad above
+                beta1 = group['betas'][0]
+                beta2 = group['betas'][1]
 
+                state['m'] = beta1 * state['m'] + (1-beta1) * grad
+                state['v'] = beta2 * state['v'] + (1-beta2) * (torch.square(grad))
+
+                #bias_corrected_mt = state['m'] / (1-beta1**state["t"]) #bias corrected... beta1 of curr timestep
+                #bias_corrected_vt = state['v'] / (1-beta2**state["t"]) #bias corrected
+                #p.data = p.data - alpha * bias_corrected_mt / (torch.sqrt(bias_corrected_vt) + group['eps'])
+                #above is less efficient way
+                state['alpha'] = alpha * math.sqrt(1-beta2**state["t"]) / (1-beta1**state["t"])
+                p.data = p.data - state['alpha'] * state['m'] / (torch.sqrt(state['v']) + group['eps'])
+
+                #4
+                p.data = p.data - alpha * group["weight_decay"] * p.data
+                state = p.data
 
         return loss
