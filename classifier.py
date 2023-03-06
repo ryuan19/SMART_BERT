@@ -44,8 +44,8 @@ class BertSentimentClassifier(torch.nn.Module):
             elif config.option == 'finetune':
                 param.requires_grad = True
 
-        ### TODO
-        raise NotImplementedError
+        self.linear = torch.nn.Linear(self.bert.config.hidden_size, self.num_labels)
+        self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
 
 
     def forward(self, input_ids, attention_mask):
@@ -53,8 +53,24 @@ class BertSentimentClassifier(torch.nn.Module):
         # The final BERT contextualized embedding is the hidden state of [CLS] token (the first token).
         # HINT: you should consider what is the appropriate output to return given that
         # the training loop currently uses F.cross_entropy as the loss function.
-        ### TODO
-        raise NotImplementedError
+
+        embeddings = self.bert.embed(input_ids)
+        hidden_states = self.bert.encode(embeddings, attention_mask) 
+
+        outputs = self.bert.forward(input_ids, attention_mask)
+        pooled_output = outputs['pooler_output']
+        logits = self.dropout(pooled_output)
+        logits = self.linear(logits)
+        
+        return logits
+
+        # hidden_states = outputs.last_hidden_state
+        # cls_embeddings = hidden_states[:, 0, :] 
+        
+        # logits = self.dropout(cls_embeddings)
+        # logits = self.linear(logits)
+        # where to use contextualized embedding of hidden state of CLS token
+        # F.cross_entropy as loss function -> does that mean use softmax?
 
 
 
