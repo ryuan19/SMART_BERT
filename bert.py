@@ -117,8 +117,8 @@ class BertLayer(nn.Module):
     dropout: the dropout to be applied
     ln_layer: the layer norm to be applied
     """
-    # Hint: Remember that BERT applies to the output of each sub-layer, before it is added to the sub-layer input and normalized
-    ### TODO
+    # Hint: Remember that BERT applies to the output of each sub-layer, before it is added to the sub-layer input and normalized 
+
     dense_output = dense_layer(output)
     dropout_output = dropout(dense_output)
     new_output = dropout_output + input
@@ -136,18 +136,12 @@ class BertLayer(nn.Module):
     3. a feed forward layer
     4. a add-norm that takes the input and output of the feed forward layer
     """
-    attention_output = self.self_attention(hidden_states, attention_mask) # hidden_states => (MHA) => attention_output
-    add_norm_output = self.add_norm(hidden_states, attention_output,
-                      self.attention_dense, self.attention_dropout,
-                      self.attention_layer_norm)
-    feed_foward_output = self.interm_af(self.interm_dense(add_norm_output))
-    add_norm_output2 = self.add_norm(add_norm_output, feed_foward_output,
-                       self.out_dense, self.out_dropout, self.out_layer_norm)
+    attention_output = self.self_attention(hidden_states, attention_mask)
+    add_norm_output = self.add_norm(hidden_states, attention_output, self.attention_dense, self.attention_dropout, self.attention_layer_norm)
+    feed_forward_output = self.interm_af(self.interm_dense(add_norm_output))
+    add_norm_output2 = self.add_norm(add_norm_output, feed_forward_output, self.out_dense, self.out_dropout, self.out_layer_norm)
 
     return add_norm_output2
-
-
-
 
 class BertModel(BertPreTrainedModel):
   """
@@ -199,7 +193,7 @@ class BertModel(BertPreTrainedModel):
     embeddings = inputs_embeds + pos_embeds + tk_type_embeds
     embeddings = self.embed_layer_norm(embeddings)
     embeddings = self.embed_dropout(embeddings)
-
+    
     return embeddings
 
 
