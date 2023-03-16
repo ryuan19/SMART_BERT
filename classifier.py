@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import csv
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import classification_report, f1_score, recall_score, accuracy_score
@@ -12,6 +13,7 @@ from tokenizer import BertTokenizer
 from bert import BertModel
 from optimizer import AdamW
 from tqdm import tqdm
+from smart_pytorch import SMARTLoss
 
 
 TQDM_DISABLE=False
@@ -55,18 +57,18 @@ class BertSentimentClassifier(torch.nn.Module):
         # the training loop currently uses F.cross_entropy as the loss function.
 
         embeddings = self.bert.embed(input_ids)
-        hidden_states = self.bert.encode(embeddings, attention_mask) 
+        hidden_states = self.bert.encode(embeddings, attention_mask)
 
         outputs = self.bert.forward(input_ids, attention_mask)
         pooled_output = outputs['pooler_output']
         logits = self.dropout(pooled_output)
         logits = self.linear(logits)
-        
+
         return logits
 
         # hidden_states = outputs.last_hidden_state
-        # cls_embeddings = hidden_states[:, 0, :] 
-        
+        # cls_embeddings = hidden_states[:, 0, :]
+
         # logits = self.dropout(cls_embeddings)
         # logits = self.linear(logits)
         # where to use contextualized embedding of hidden state of CLS token
@@ -289,7 +291,10 @@ def train(args):
 
             optimizer.zero_grad()
             logits = model(b_ids, b_mask)
-            loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
+            print("eggs")
+            print(model.bert.word_embed) #not working
+            print("bruh")
+            loss = F.cross_entropy(logitss, b_labels.view(-1), reduction='sum') / args.batch_size
 
             loss.backward()
             optimizer.step()
@@ -357,6 +362,8 @@ def get_args():
     parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
     parser.add_argument("--lr", type=float, help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 1e-5",
                         default=1e-5)
+
+    parser.add_argument("--smart", type=bool, default=False)
 
     args = parser.parse_args()
     return args

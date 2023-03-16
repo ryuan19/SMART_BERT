@@ -117,7 +117,7 @@ class BertLayer(nn.Module):
     dropout: the dropout to be applied
     ln_layer: the layer norm to be applied
     """
-    # Hint: Remember that BERT applies to the output of each sub-layer, before it is added to the sub-layer input and normalized 
+    # Hint: Remember that BERT applies to the output of each sub-layer, before it is added to the sub-layer input and normalized
 
     dense_output = dense_layer(output)
     dropout_output = dropout(dense_output)
@@ -174,6 +174,9 @@ class BertModel(BertPreTrainedModel):
 
     self.init_weights()
 
+  def word_embed(self):
+    return self.word_embedding
+
   def embed(self, input_ids):
     input_shape = input_ids.size()
     seq_length = input_shape[1]
@@ -193,7 +196,7 @@ class BertModel(BertPreTrainedModel):
     embeddings = inputs_embeds + pos_embeds + tk_type_embeds
     embeddings = self.embed_layer_norm(embeddings)
     embeddings = self.embed_dropout(embeddings)
-    
+
     return embeddings
 
 

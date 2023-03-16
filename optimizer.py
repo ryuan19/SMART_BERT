@@ -2,7 +2,9 @@ from typing import Callable, Iterable, Tuple
 import math
 
 import torch
+import torch.nn as nn
 from torch.optim import Optimizer
+from smart_pytorch import SMARTLoss
 
 
 class AdamW(Optimizer):

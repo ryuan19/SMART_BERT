@@ -2,7 +2,8 @@ import time, random, numpy as np, argparse, sys, re, os
 from types import SimpleNamespace
 
 import torch
-from torch import nn
+#from torch import nn
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
@@ -15,6 +16,8 @@ from datasets import SentenceClassificationDataset, SentencePairDataset, \
 
 from evaluation import model_eval_sst, test_model_multitask
 
+#from smart_pytorch import SMARTLoss
+from smart_pytorch import SMARTLoss, kl_loss, sym_kl_loss
 
 TQDM_DISABLE=True
 
@@ -56,6 +59,8 @@ class MultitaskBERT(nn.Module):
         self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
         self.one_linear = torch.nn.Linear(self.bert.config.hidden_size, 1)
 
+    def embed(self, input_ids):
+        return self.bert.embed(input_ids)
 
     def forward(self, input_ids, attention_mask):
         'Takes a batch of sentences and produces embeddings for them.'
@@ -114,14 +119,6 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit); it will be passed to the sigmoid function
         during evaluation, and handled as a logit by the appropriate loss function.
         '''
-        #embeddings_1 = self.bert.embed(input_ids_1)
-        #embeddings_2 = self.bert.embed(input_ids_2)
-        #hidden_states_1 = self.bert.encode(embeddings_1, attention_mask_1)
-        #hidden_states_2 = self.bert.encode(embeddings_2, attention_mask_2)
-
-        #outputs_1 = self.bert.forward(input_ids_1, attention_mask_1)
-        #outputs_2 = self.bert.forward(input_ids_2, attention_mask_2)
-        #logits = torch.cat((outputs_1['pooler_output'], outputs_2['pooler_output']), 0)
         inputs = torch.cat((input_ids_1, input_ids_2), dim=1)
         masks = torch.cat((attention_mask_1, attention_mask_2), dim=1)
         logits = self.forward(inputs,masks)
@@ -194,8 +191,23 @@ def train_multitask(args):
             b_labels = b_labels.to(device)
 
             optimizer.zero_grad()
-            logits = model.predict_sentiment(b_ids, b_mask)
-            loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
+            logits = model.predict_sentiment(b_ids, b_mask) #input id and mask
+
+
+            if args.smart:
+                #logits the same here?
+                smart_loss_fn = SMARTLoss(eval_fn = eval, loss_fn = kl_loss, loss_last_fn = sym_kl_loss)
+                embeds = model.embed(b_ids)
+                print("eggs")
+                print(config)
+                embeds = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
+                #state as logits
+                #b_labels as labels
+                loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
+                #both params are tensors
+                loss += smart_loss_fn(embeds, logits) # * self.weight
+            else:
+                loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
 
             loss.backward()
             optimizer.step()
@@ -265,6 +277,8 @@ def get_args():
     parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
     parser.add_argument("--lr", type=float, help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 1e-5",
                         default=1e-5)
+
+    parser.add_argument("--smart", type=bool, default=False)
 
     args = parser.parse_args()
     return args
