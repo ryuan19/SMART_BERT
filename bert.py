@@ -193,6 +193,11 @@ class BertModel(BertPreTrainedModel):
     tk_type_embeds = self.tk_type_embedding(tk_type_ids)
 
     # Add three embeddings together; then apply embed_layer_norm and dropout and return.
+    '''
+    print("input: ", inputs_embeds.shape)
+    print("pos_embeds: ", pos_embeds.shape)
+    print("tk_type_embeds: ", tk_type_embeds.shape)
+    '''
     embeddings = inputs_embeds + pos_embeds + tk_type_embeds
     embeddings = self.embed_layer_norm(embeddings)
     embeddings = self.embed_dropout(embeddings)
@@ -215,6 +220,7 @@ class BertModel(BertPreTrainedModel):
       # feed the encoding from the last bert_layer to the next
       hidden_states = layer_module(hidden_states, extended_attention_mask)
 
+
     return hidden_states
 
   def forward(self, input_ids, attention_mask):
@@ -225,9 +231,30 @@ class BertModel(BertPreTrainedModel):
     # get the embedding for each input token
     embedding_output = self.embed(input_ids=input_ids)
 
+    #print(f'forward attn mask {attention_mask.shape}')
+    #print(f'forward embedding {embedding_output.shape}')
     # feed to a transformer (a stack of BertLayers)
     sequence_output = self.encode(embedding_output, attention_mask=attention_mask)
+    #print(f'forward sequence_output {sequence_output.shape}')
 
+    # get cls token hidden state
+    first_tk = sequence_output[:, 0]
+    first_tk = self.pooler_dense(first_tk)
+    first_tk = self.pooler_af(first_tk)
+
+    return {'last_hidden_state': sequence_output, 'pooler_output': first_tk}
+
+  def noEmbedForward(self, embedded_stuff, attention_mask):
+    """
+    input_ids: [batch_size, seq_len], seq_len is the max length of the batch
+    attention_mask: same size as input_ids, 1 represents non-padding tokens, 0 represents padding tokens
+    """
+    # get the embedding for each input token
+
+    # feed to a transformer (a stack of BertLayers)
+    #print(f'My Print 2: {attention_mask.shape}')
+    sequence_output = self.encode(embedded_stuff, attention_mask=attention_mask)
+    #print("done encode")
     # get cls token hidden state
     first_tk = sequence_output[:, 0]
     first_tk = self.pooler_dense(first_tk)

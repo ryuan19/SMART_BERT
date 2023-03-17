@@ -1,5 +1,6 @@
 import time, random, numpy as np, argparse, sys, re, os
 from types import SimpleNamespace
+import random
 
 import torch
 #from torch import nn
@@ -17,7 +18,8 @@ from datasets import SentenceClassificationDataset, SentencePairDataset, \
 from evaluation import model_eval_sst, test_model_multitask
 
 #from smart_pytorch import SMARTLoss
-from smart_pytorch import SMARTLoss, kl_loss, sym_kl_loss
+from mysmartmodel import SMARTLoss
+from mysmartloss import kl_loss, sym_kl_loss
 
 TQDM_DISABLE=True
 
@@ -48,6 +50,7 @@ class MultitaskBERT(nn.Module):
         # You will want to add layers here to perform the downstream tasks.
         # Pretrain mode does not require updating bert paramters.
         self.bert = BertModel.from_pretrained('bert-base-uncased')
+
         for param in self.bert.parameters():
             if config.option == 'pretrain':
                 param.requires_grad = False
@@ -61,6 +64,16 @@ class MultitaskBERT(nn.Module):
 
     def embed(self, input_ids):
         return self.bert.embed(input_ids)
+
+    def noEmbedForward(self, input_ids, attention_mask):
+        'Takes a batch of sentences and produces embeddings for them.'
+        # The final BERT embedding is the hidden state of [CLS] token (the first token)
+        # Here, you can start by just returning the embeddings straight from BERT.
+        # When thinking of improvements, you can later try modifying this
+        # (e.g., by adding other layers).
+
+        logits = self.bert.noEmbedForward(input_ids, attention_mask)["pooler_output"]
+        return logits
 
     def forward(self, input_ids, attention_mask):
         'Takes a batch of sentences and produces embeddings for them.'
@@ -85,6 +98,16 @@ class MultitaskBERT(nn.Module):
 
         return logits
 
+    def pooler_predict_sentiment(self, embedstuff):
+        '''Given a batch of sentences, outputs logits for classifying sentiment.
+        There are 5 sentiment classes:
+        (0 - negative, 1- somewhat negative, 2- neutral, 3- somewhat positive, 4- positive)
+        Thus, your output should contain 5 logits for each sentence.
+        '''
+        logits = self.dropout(embedstuff)
+        logits = self.multiclass_linear(logits) #5
+
+        return logits
 
     def predict_paraphrase(self,
                            input_ids_1, attention_mask_1,
@@ -93,16 +116,7 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit); it will be passed to the sigmoid function
         during evaluation, and handled as a logit by the appropriate loss function.
         '''
-        '''
-        embeddings_1 = self.bert.embed(input_ids_1)
-        embeddings_2 = self.bert.embed(input_ids_2)
-        hidden_states_1 = self.bert.encode(embeddings_1, attention_mask_1)
-        hidden_states_2 = self.bert.encode(embeddings_2, attention_mask_2)
 
-        outputs_1 = self.bert.forward(input_ids_1, attention_mask_1)
-        outputs_2 = self.bert.forward(input_ids_2, attention_mask_2)
-        logits = torch.cat((outputs_1['pooler_output'], outputs_2['pooler_output']), 0)
-        '''
         inputs = torch.cat((input_ids_1, input_ids_2), dim=1)
         masks = torch.cat((attention_mask_1, attention_mask_2), dim=1)
         logits = self.forward(inputs,masks)
@@ -192,15 +206,36 @@ def train_multitask(args):
 
             optimizer.zero_grad()
             logits = model.predict_sentiment(b_ids, b_mask) #input id and mask
+            # ^dont use this, use the pooler output (pooler is our embedding), then add noise
+            # then pass sum to classifer
+
+            #diff shapes, pooler output is same for all 3 tasks, but diff classifier for all task
 
 
             if args.smart:
+                def eval(embedded_stuff): # get pooled output and add noise to pooled
+                    #embedded in shape shape dim=3, assertion error dim=2
+                    #make attention mask all ones
+                    attention_mask = torch.ones(embedded_stuff.shape[:2]) # just all ones, add noise later
+                    #embedded has to be 3d, but attn mask is 2d
+
+                    #this is our attention mask of 0 and 1 with the same shape as input_ids
+                    pooler = model.noEmbedForward(embedded_stuff.cuda(), attention_mask.cuda()) #gives pooler
+                    #.cuda() to prevent them diff device errors
+
+                    logits_predictsentiment = model.pooler_predict_sentiment(pooler)
+                    #copied for predict similarity
+
+                    # logits = self.bert.classifier(pooled) this should be pooled+noise
+                    # we already apply noise to the embedded stuff in mysmartmodel.py
+
+                    return logits_predictsentiment
                 #logits the same here?
+                # eval = model_eval_sst(sst_train_dataloader, model, device)
                 smart_loss_fn = SMARTLoss(eval_fn = eval, loss_fn = kl_loss, loss_last_fn = sym_kl_loss)
                 embeds = model.embed(b_ids)
-                print("eggs")
-                print(config)
-                embeds = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
+
+                # embeds = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
                 #state as logits
                 #b_labels as labels
                 loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
@@ -208,6 +243,9 @@ def train_multitask(args):
                 loss += smart_loss_fn(embeds, logits) # * self.weight
             else:
                 loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
+
+            # TODO - two more for loops for two more classifiers for fine tuning
+            # training on others, one task might be better one might be worse, tradeoffs
 
             loss.backward()
             optimizer.step()
@@ -225,7 +263,6 @@ def train_multitask(args):
             save_model(model, optimizer, args, config, args.filepath)
 
         print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_acc :.3f}, dev acc :: {dev_acc :.3f}")
-
 
 
 def test_model(args):

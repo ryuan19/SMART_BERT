@@ -291,10 +291,7 @@ def train(args):
 
             optimizer.zero_grad()
             logits = model(b_ids, b_mask)
-            print("eggs")
-            print(model.bert.word_embed) #not working
-            print("bruh")
-            loss = F.cross_entropy(logitss, b_labels.view(-1), reduction='sum') / args.batch_size
+            loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
 
             loss.backward()
             optimizer.step()
